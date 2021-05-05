@@ -1,0 +1,95 @@
+#-----------------------------------------------------#
+#   _    ___  ___     ___ _  _____ ___ ___ _____ ___  #
+#  | |  / _ \/ __|___/ __| |/ / _ \_ _| _ \_   _/ __| #
+#  | |_| (_) \__ \___\__ \ ' <|   /| ||  _/ | | \__ \ #
+#  |____\___/|___/   |___/_|\_\_|_\___|_|   |_| |___/ #
+# 													  #
+#					Nome: LsShopGUI					  #
+#					Versão: 1.0						  #
+#					Autor: yFlint					  #
+# 					Descrição: 						  #
+#			  - Skript de loja em gui				  #
+#													  #
+#													  #
+#-----------------------------------------------------#
+
+import:
+	org.bukkit.Bukkit
+
+on load:
+	# Verify addons
+	set {_plugins} to "%Bukkit.getPluginManager().getPlugins()%"
+	if {_plugins} contains "skript-yaml", "Skript-Reflect", "skript-gui" and "Vault":
+		send "&6[LsShopGUI] &aDependências encontradas (4): &fskript-yaml, Skript-Reflect, skript-gui e Vault" to console
+	else:
+		send "&6[LsShopGUI] &cDependências não encontradas (4): &fskript-yaml, Skript-Reflect, skript-gui e Vault" to console
+		execute console command "sk disable %script name%.sk"
+
+	# Configs
+	load yaml "plugins/LsShopGUI/menu.yml" as "lsshopgui_menu"
+	load yaml "plugins/LsShopGUI/messages.yml" as "lsshopgui_msgs"
+	if yaml "lsshopgui_menu" is empty:
+		set yaml value "Main.Tamanho" from "lsshopgui_menu" to 5
+		set yaml value "Main.Nome" from "lsshopgui_menu" to "&8ShopGUI"
+		set yaml list "Main.Lores" from "lsshopgui_menu" to "" and " &6◆ &bValor: &2${preço}.00" and "" and " &aClique para comprar."
+		set yaml value "Menu.1.Item" from "lsshopgui_menu" to "DIAMOND"
+		set yaml value "Menu.1.Valor" from "lsshopgui_menu" to 100
+		set yaml value "Menu.1.Slot" from "lsshopgui_menu" to "10"
+	if yaml "lsshopgui_msgs" is empty:
+		set yaml list "Messages.Buy-Item" from "lsshopgui_msgs" to "&aVocê comprou &f{item} &apor ${preço}"
+		set yaml list "Messages.Insufficient-Money" from "lsshopgui_msgs" to "&cVocê não tem dinheiro suficiente para comprar isto."
+		set yaml list "Messages.Buy-Amount" from "lsshopgui_msgs" to "" and " &aDigite no chat a quantia que você quer comprar." and " &aDigite cancelar para cancelar." and ""
+	save yaml "lsshopgui_menu" and "lsshopgui_msgs"
+
+command /loja [<text>]:
+	trigger:
+		if arg-1 is not set:
+			set {_shop-nome} to yaml value "Main.Nome" from "lsshopgui_menu"
+			set {_shop-tamanho} to yaml value "Main.Tamanho" from "lsshopgui_menu"
+			set {_lore::*} to coloured yaml list "Main.Lores" from "lsshopgui_menu"
+			create a gui with virtual chest inventory named {_shop-nome} with {_shop-tamanho} rows:
+				loop yaml node keys "Menu" from "lsshopgui_menu":
+					set {_item} to yaml value "Menu.%loop-value%.Item" from "lsshopgui_menu"
+					set {_valor} to yaml value "Menu.%loop-value%.Valor" from "lsshopgui_menu"
+					replace all "{preço}" in {_lore::*} with "%{_valor}%"
+					set {_slot} to yaml value "Menu.%loop-value%.Slot" from "lsshopgui_menu"
+					make gui slot {_slot} with ({_item} parsed as item) with lore {_lore::*}:
+						close player's inventory
+						set player's metadata "Comprando item" to true
+						set player's metadata "Valor item" to {_valor}
+						set player's metadata "Item" to "%{_item}%"
+						set {_msg::*} to coloured yaml list "Messages.Buy-Amount" from "lsshopgui_msgs"
+						send {_msg::*}
+			open gui last gui for player
+		else:
+			if player has permission "shopgui.admin":
+				if arg-1 = "reload":
+					load yaml "plugins/LsShopGUI/menu.yml" as "lsshopgui_menu"
+					load yaml "plugins/LsShopGUI/messages.yml" as "lsshopgui_msgs"
+					send "&6[LsShopGUI] &aConfigurações recarregadas."
+				else:
+					send "", "&6[LsShopGUI] Comandos:" , " &e- /loja reload" and ""
+			else:
+				send "&cVocê não tem permissão para executar este comando."
+
+chat:
+	if player's metadata "Comprando item" = true:
+		cancel event
+		set {_n} to (message parsed as number)
+		set {_v} to player's metadata "Valor item"*{_n}
+		set {_item} to player's metadata "Item"
+		set {_item} to "%{_n}% %{_item}%" parsed as item
+		clear player's metadata "Comprando item"
+		clear player's metadata "Valor item"
+		clear player's metadata "Item"
+		if player's balance >= {_v}:
+			remove {_v} from player's balance
+			give {_item} to player
+			set {_msg::*} to coloured yaml list "Messages.Buy-Item" from "lsshopgui_msgs"
+			replace all "{item}" in {_msg::*} with "%{_item}%"
+			replace all "{preço}" in {_msg::*} with "%{_v}%"
+			send {_msg::*}
+		else:
+			set {_msg::*} to coloured yaml list "Messages.Insufficient-Money" from "lsshopgui_msgs"
+			send {_msg::*}
+		stop
